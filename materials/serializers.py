@@ -1,10 +1,12 @@
 from rest_framework import serializers
 from .models import Course, Lesson
+from .validators import VideoURLValidator
 
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
         fields = '__all__'
+        validators = [VideoURLValidator(field='video_url')]
 
 
 class CourseSerializer(serializers.ModelSerializer):
@@ -16,4 +18,4 @@ class CourseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Course
-        fields = ('id','name', 'preview', 'description', 'count_lessons', 'lessons')
+        fields = ('id', 'name', 'preview', 'description', 'count_lessons', 'lessons')

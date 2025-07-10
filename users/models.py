@@ -55,3 +55,19 @@ class Payment(models.Model):
     class Meta:
         verbose_name = 'Платеж'
         verbose_name_plural = 'Платежи'
+
+
+class Subscribe(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE,
+        verbose_name="курс",
+        related_name="course_subscribe",
+        )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='пользователь', related_name='user_subscribe')
+
+    def __str__(self):
+        return f"{self.user} подписан на {self.course.name}"
+
+    class Meta:
+        unique_together = ("user", "course")
+        verbose_name = 'Подписка'
+        verbose_name_plural = 'Подписки'

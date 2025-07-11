@@ -2,7 +2,7 @@ from django.shortcuts import render
 from rest_framework import viewsets, generics
 from .models import Course, Lesson
 from .serializers import CourseSerializer, LessonSerializer
-from .permissions import IsModerator, IsModeratorForbidden, IsOwner
+from .permissions import IsModerator, IsOwner
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from .paginators import ListPagination
 

@@ -2,13 +2,15 @@ from django.shortcuts import render
 from rest_framework import viewsets, generics
 from .models import Course, Lesson
 from .serializers import CourseSerializer, LessonSerializer
-from .permissions import IsModerator, IsModeratorForbidden, IsOwner
+from .permissions import IsModerator, IsOwner
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from .paginators import ListPagination
 
 
 class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
     queryset = Course.objects.all()
+    pagination_class = ListPagination
 
     def get_permissions(self):
         if self.action in ['update', 'retrieve']:
@@ -34,6 +36,7 @@ class CourseViewSet(viewsets.ModelViewSet):
 class LessonListApiView(generics.ListAPIView):
     serializer_class = LessonSerializer
     queryset = Lesson.objects.all()
+    pagination_class = ListPagination
     # permission_classes = [IsModerator]
 
     def get_queryset(self):

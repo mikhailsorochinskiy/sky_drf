@@ -6,9 +6,10 @@ from materials.models import Course, Lesson
 class User(AbstractUser):
     username = models.CharField(max_length=150, blank=True, null=True)
     email = models.EmailField(unique=True, verbose_name='Email')
-    phone_number = models.CharField(max_length=15, blank=True, null=True, help_text='Введите номер телефона', verbose_name='Телефон')
+    phone_number = models.CharField(max_length=15, blank=True, null=True, help_text='Введите номер телефона',
+                                    verbose_name='Телефон')
     avatar = models.ImageField(upload_to='avatars', blank=True, null=True, verbose_name="Аватар",
-                              help_text='Загрузите фото для вашей аватарки')
+                               help_text='Загрузите фото для вашей аватарки')
     city = models.CharField(max_length=50, blank=True, null=True, help_text='Ваш город', verbose_name='Город')
 
     USERNAME_FIELD = 'email'
@@ -48,6 +49,18 @@ class Payment(models.Model):
     type = models.CharField(
         max_length=50, choices=PAYMENT_CHOICES, verbose_name="Способ оплаты"
     )
+    session_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="ID сессии",
+    )
+    link = models.URLField(
+        max_length=400,
+        blank=True,
+        null=True,
+        verbose_name="Ссылка на оплату",
+    )
 
     def __str__(self):
         return f'{self.user}:{self.payment_date}:{self.type}:{self.amount}'
@@ -59,9 +72,9 @@ class Payment(models.Model):
 
 class Subscribe(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE,
-        verbose_name="курс",
-        related_name="course_subscribe",
-        )
+                               verbose_name="курс",
+                               related_name="course_subscribe",
+                               )
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='пользователь', related_name='user_subscribe')
 
     def __str__(self):

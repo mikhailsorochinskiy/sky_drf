@@ -8,6 +8,7 @@ from .models import User, Payment, Subscribe
 from .serializers import UserSerializer, PaymentSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from materials.models import Course
+from .services import create_product, create_price, create_session
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -31,6 +32,18 @@ class PaymentViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ('paid_course', 'paid_lesson', 'type')
     ordering_fields = ('payment_date',)
+
+    def perform_create(self, serializer):
+        payment = serializer.save(user=self.request.user)
+        if payment.paid_course:
+            product = create_product(f'Курс {payment.paid_course.name}')
+        else:
+            product = create_product(f'Урок: {payment.paid_lesson.name}')
+        price = create_price(payment.amount, product.name)
+        session, link = create_session(price)
+        payment.session_id = session
+        payment.link = link
+        payment.save()
 
 
 class SubscribeApiView(APIView):

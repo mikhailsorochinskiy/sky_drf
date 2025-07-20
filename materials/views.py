@@ -5,6 +5,7 @@ from .serializers import CourseSerializer, LessonSerializer
 from .permissions import IsModerator, IsOwner
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from .paginators import ListPagination
+from materials.tasks import add
 
 
 class CourseViewSet(viewsets.ModelViewSet):

@@ -160,12 +160,12 @@ CELERY_TIMEZONE = "Europe/Moscow"
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 
-# CELERY_BEAT_SCHEDULE = {
-#     'task-name': {
-#         'task': 'materials.tasks.send_mail_update_course',  # Путь к задаче
-#         'schedule': timedelta(seconds=10),  # Расписание выполнения задачи (например, каждые 10 минут)
-#     },
-# }
+CELERY_BEAT_SCHEDULE = {
+    'task-name': {
+        'task': 'users.tasks.check_last_login',  # Путь к задаче
+        'schedule': timedelta(days=1),  # Расписание выполнения задачи (например, каждые 10 минут)
+    },
+}
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.yandex.ru'

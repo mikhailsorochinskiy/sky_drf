@@ -5,7 +5,8 @@ from .serializers import CourseSerializer, LessonSerializer
 from .permissions import IsModerator, IsOwner
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from .paginators import ListPagination
-from materials.tasks import add
+from materials.tasks import send_mail_update_course
+from users.models import Subscribe
 
 
 class CourseViewSet(viewsets.ModelViewSet):
@@ -32,6 +33,15 @@ class CourseViewSet(viewsets.ModelViewSet):
         if self.request.user.groups.filter(name='moderators').exists():
             return Course.objects.all()
         return Course.objects.filter(owner=self.request.user)
+
+    def perform_update(self, serializer):
+        """Отсылает сообщение об обновлении курса подписанному пользователю"""
+        course = serializer.save()
+        subs = Subscribe.objects.filter(course=course)
+        recipients = []
+        for sub in subs:
+            recipients.append(sub.user.email)
+        send_mail_update_course.delay(recipients, course.name)
 
 
 class LessonListApiView(generics.ListAPIView):

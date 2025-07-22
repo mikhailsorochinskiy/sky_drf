@@ -1,0 +1,2 @@
+celery -A config worker -l INFO --pool=solo
+celery -A config beat -l info -S django

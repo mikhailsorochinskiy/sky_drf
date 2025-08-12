@@ -4,7 +4,9 @@ services:
   web:
     build: .
     command: >
-        sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+      sh -c "python manage.py wait_for_db && 
+             python manage.py migrate && 
+             python manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
@@ -29,14 +31,17 @@ services:
 
   db:
     image: postgres:16
-    env_file:
-      - ./.env
     environment:
       POSTGRES_DB: ${NAME}
       POSTGRES_USER: ${USER}
       POSTGRES_PASSWORD: ${PASSWORD}
       POSTGRES_HOST: ${HOST}
       POSTGRES_PORT: ${PORT}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${USER} -d ${NAME}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

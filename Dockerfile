@@ -16,7 +16,7 @@ RUN poetry config virtualenvs.create false
 COPY pyproject.toml poetry.lock ./
 RUN poetry install --no-root
 
-COPY ./static /app/static/
+COPY /static /app/static/
 COPY . .
 
 EXPOSE 8000

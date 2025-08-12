@@ -131,7 +131,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # Для collectstatic (не включать в STATICFILES_DIRS!)
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'sky_drf/static'),  # Ваши исходные статические файлы
+    os.path.join(BASE_DIR, 'static'),  # Ваши исходные статические файлы
 ]
 
 # Default primary key field type

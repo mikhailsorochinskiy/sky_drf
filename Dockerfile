@@ -7,8 +7,6 @@ RUN apt-get update \
     && apt-get install -y gcc libpq-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /app/static /app/staticfiles \
-    && chown -R 1000:1000 /app/static
 
 RUN pip install --upgrade pip
 RUN pip install poetry
@@ -17,7 +15,6 @@ RUN poetry config virtualenvs.create false
 COPY pyproject.toml poetry.lock ./
 RUN poetry install --no-root
 
-COPY ./static /app/static/
 COPY . .
 
 EXPOSE 8000

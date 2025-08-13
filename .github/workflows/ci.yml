@@ -30,6 +30,8 @@ jobs:
         run: pip install poetry
       - name: Install dependencies
         run: poetry install --no-root
+      - name: Wait for PostgreSQL
+        run: sleep 20
       - name: Run migrations
         env:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}

@@ -32,21 +32,15 @@ jobs:
         run: poetry install --no-root
       - name: Run migrations
         env:
-          DB_NAME: sky_drf
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_HOST: postgres
-          DB_PORT: 5432
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sky_drf
+          DJANGO_SETTINGS_MODULE: config.settings
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           run: |
             poetry run python manage.py migrate
         run: poetry run python manage.py migrate
       - name: Run tests
         env:
-          DB_NAME: sky_drf
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_HOST: postgres
-          DB_PORT: 5432
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sky_drf
+          DJANGO_SETTINGS_MODULE: config.settings
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: poetry run python manage.py test

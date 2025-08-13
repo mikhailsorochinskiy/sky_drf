@@ -21,7 +21,7 @@ jobs:
         pip install poetry
         poetry config virtualenvs.create true
         poetry install --no-root --all-extras
-        pip install django celery redis
+        pip install django celery redis python-dotenv
 
     - name: Run migrations
       run: |

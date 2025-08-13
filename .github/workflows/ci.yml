@@ -21,6 +21,7 @@ jobs:
         pip install poetry
         poetry config virtualenvs.create true
         poetry install --no-root
+        pip install django
 
     - name: Run migrations
       run: |

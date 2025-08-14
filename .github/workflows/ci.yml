@@ -125,11 +125,11 @@ jobs:
           cd ${{ secrets.DEPLOY_DIR }}
 
           # 1. Останавливаем предыдущий процесс Gunicorn (если есть)
-          pkill -f "gunicorn.*8001" || true
+          pkill -f "gunicorn.*8000" || true
 
           # 2. Запускаем Gunicorn в фоновом режиме с nohup и логированием
           nohup poetry run gunicorn config.wsgi:application \
-            --bind 0.0.0.0:8001 \
+            --bind 0.0.0.0:8000 \
             --workers 3 \
             --access-logfile gunicorn_access.log \
             --error-logfile gunicorn_error.log \
@@ -137,5 +137,5 @@ jobs:
 
           # 3. Проверяем, что процесс запустился
           sleep 5
-          pgrep -f "gunicorn.*8001" || exit 1
+          pgrep -f "gunicorn.*8000" || exit 1
           EOF

@@ -56,126 +56,75 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: test
-
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.5.4
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
-
       - name: Add server to known_hosts
         run: |
           ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
-
-      - name: Verify server access
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "id -u"
-
       - name: Copy project files to server
         run: |
-          rsync -avz --exclude '__pycache__' --exclude '.env' --exclude '.venv' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
-
-      - name: Install system dependencies
-        run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          # Добавляем репозитории для Python 3.13 и PostgreSQL 16
-          sudo apt-get update -y
-          sudo apt-get install -y software-properties-common wget
-          sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-
-          # Устанавливаем основные зависимости
-          sudo apt-get update
-          sudo apt-get install -y \
-              python3.13 \
-              python3.13-dev \
-              python3.13-venv \
-              postgresql-16 \
-              postgresql-client-16 \
-              libpq-dev \
-              build-essential \
-              libssl-dev \
-              libffi-dev
-
-          # Настраиваем ссылку на pg_config
-          sudo ln -sf /usr/lib/postgresql/16/bin/pg_config /usr/bin/pg_config || true
+            cd ${{ secrets.DEPLOY_DIR }}
+            git fetch --prune
+            git reset --hard origin/ci_cd
           EOF
-
-      - name: Configure PostgreSQL
+      - name: Install dependencies on server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          # Настраиваем пользователя и базу данных
-          sudo -u postgres psql -c "CREATE USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';" || true
-          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.POSTGRES_DB }} OWNER ${{ secrets.POSTGRES_USER }};" || true
-          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.POSTGRES_DB }} TO ${{ secrets.POSTGRES_USER }};"
-
-          # Настраиваем аутентификацию
+            cd ${{ secrets.DEPLOY_DIR }}
+            curl -sSL https://install.python-poetry.org | python3 -
+            poetry install --no-root
+          EOF
+      - name: Setup and configure PostgreSQL
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          sudo systemctl start postgresql@16-main
+          sudo systemctl status postgresql@16-main
+          sudo -u postgres psql -c "ALTER USER ${{ secrets.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASSWORD }}';" || \
+          sudo -u postgres psql -c "CREATE USER ${{ secrets.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASSWORD }}';"
+          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.DB_NAME }} OWNER ${{ secrets.DB_USER }};" || true
+          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.DB_NAME }} TO ${{ secrets.DB_USER }};"
           echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-
-          # Перезапускаем PostgreSQL
           sudo systemctl restart postgresql@16-main
+          sudo -u postgres psql -c "\du"
+          sudo -u postgres psql -c "\l"
           EOF
-
-      - name: Install and configure Poetry
+      - name: Check PostgreSQL status
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo systemctl status postgresql@16-main"
+      - name: Create .env file on server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          # Устанавливаем Poetry
-          curl -sSL https://install.python-poetry.org | python3.13 -
-          echo 'export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"' >> ~/.bashrc
-          source ~/.bashrc
-          poetry --version
+            cd ${{ secrets.DEPLOY_DIR }}
+            cat > .env <<EOL
+            DB_NAME=${{ secrets.DB_NAME }}
+            DB_USER=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_HOST=localhost
+            DB_PORT=5432
+            EOL
           EOF
-
-      - name: Install Python dependencies
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          cd ${{ secrets.DEPLOY_DIR }}
-          # Создаем виртуальное окружение с Python 3.13
-          poetry env use python3.13
-
-          # Устанавливаем зависимости (включая psycopg2-binary для разработки)
-          poetry install --no-root --no-interaction
-          EOF
-
-      
-
-      - name: Apply migrations with correct credentials
-        env:
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+      - name: Apply migrations
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd ${{ secrets.DEPLOY_DIR }}
-
-          # Экспортируем переменные для psql
-          export PGHOST=localhost \
-                 PGPORT=5432 \
-                 PGUSER=${{ secrets.POSTGRES_USER }} \
-                 PGPASSWORD='${{ secrets.POSTGRES_PASSWORD }}' \
-                 PGDATABASE=${{ secrets.POSTGRES_DB }}
-
-          # Дополнительная проверка перед миграциями
-          psql -c "SELECT 1;" || exit 1
-
-          # Применяем миграции
+          PGPASSWORD='${{ secrets.DB_PASSWORD }}' psql -h localhost -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -c "SELECT 1;" || exit 1
           poetry run python manage.py migrate --no-input
+          poetry run python manage.py showmigrations
           EOF
-
-      - name: Collect static files
+      - name: Collect static files on server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          cd ${{ secrets.DEPLOY_DIR }}
-          mkdir -p static
-          poetry run python manage.py collectstatic --noinput
+            cd ${{ secrets.DEPLOY_DIR }}
+            mkdir -p static
+            poetry run python manage.py collectstatic --noinput
           EOF
-
       - name: Restart application
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "
-          sudo systemctl restart myapp.service
-          sudo systemctl status myapp.service
-          "
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            cd ${{ secrets.DEPLOY_DIR }}
+            poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8001
+          EOF

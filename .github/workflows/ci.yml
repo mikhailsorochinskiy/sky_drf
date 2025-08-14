@@ -69,7 +69,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             cd ${{ secrets.DEPLOY_DIR }}
             git fetch --prune
-            git reset --hard origin/ci_cd
+            git reset --hard origin/feature/homework_35_2
           EOF
       - name: Install dependencies on server
         run: |
@@ -83,10 +83,10 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           sudo systemctl start postgresql@16-main
           sudo systemctl status postgresql@16-main
-          sudo -u postgres psql -c "ALTER USER ${{ secrets.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASSWORD }}';" || \
-          sudo -u postgres psql -c "CREATE USER ${{ secrets.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASSWORD }}';"
-          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.DB_NAME }} OWNER ${{ secrets.DB_USER }};" || true
-          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.DB_NAME }} TO ${{ secrets.DB_USER }};"
+          sudo -u postgres psql -c "ALTER USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';" || \
+          sudo -u postgres psql -c "CREATE USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';"
+          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.POSTGRES_DB }} OWNER ${{ secrets.POSTGRES_USER }};" || true
+          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.POSTGRES_DB }} TO ${{ secrets.POSTGRES_USER }};"
           echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
           sudo systemctl restart postgresql@16-main
           sudo -u postgres psql -c "\du"
@@ -100,9 +100,9 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             cd ${{ secrets.DEPLOY_DIR }}
             cat > .env <<EOL
-            DB_NAME=${{ secrets.DB_NAME }}
-            DB_USER=${{ secrets.DB_USER }}
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_NAME=${{ secrets.POSTGRES_DB }}
+            DB_USER=${{ secrets.POSTGRES_USER }}
+            DB_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             DB_HOST=localhost
             DB_PORT=5432
             EOL
@@ -111,7 +111,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd ${{ secrets.DEPLOY_DIR }}
-          PGPASSWORD='${{ secrets.DB_PASSWORD }}' psql -h localhost -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -c "SELECT 1;" || exit 1
+          PGPASSWORD='${{ secrets.DB_PASSWORD }}' psql -h localhost -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -c "SELECT 1;" || exit 1
           poetry run python manage.py migrate --no-input
           poetry run python manage.py showmigrations
           EOF

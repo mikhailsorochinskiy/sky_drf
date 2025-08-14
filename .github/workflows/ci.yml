@@ -138,37 +138,7 @@ jobs:
           poetry install --no-root --no-interaction
           EOF
 
-      - name: Configure PostgreSQL properly
-        env:
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          # 1. Останавливаем PostgreSQL для безопасной настройки
-          sudo systemctl stop postgresql@16-main
-
-          # 2. Полностью пересоздаём пользователя и базу данных
-          sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${{ secrets.POSTGRES_DB }};"
-          sudo -u postgres psql -c "DROP USER IF EXISTS ${{ secrets.POSTGRES_USER }};"
-          sudo -u postgres psql -c "CREATE USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';"
-          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.POSTGRES_DB }} OWNER ${{ secrets.POSTGRES_USER }};"
-          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.POSTGRES_DB }} TO ${{ secrets.POSTGRES_USER }};"
-
-          # 3. Настраиваем аутентификацию
-          echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-          echo "local all ${{ secrets.POSTGRES_USER }} md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-
-          # 4. Перезапускаем PostgreSQL
-          sudo systemctl start postgresql@16-main
-          sleep 5  # Даём время для запуска
-
-          # 5. Проверяем подключение
-          PGPASSWORD='${{ secrets.POSTGRES_PASSWORD }}' psql -h localhost -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -c "SELECT 1;" || exit 1
-          EOF
+      
 
       - name: Apply migrations with correct credentials
         run: |

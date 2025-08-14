@@ -122,6 +122,20 @@ jobs:
       - name: Restart application
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-            cd ${{ secrets.DEPLOY_DIR }}
-            poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8001
+          cd ${{ secrets.DEPLOY_DIR }}
+
+          # 1. Останавливаем предыдущий процесс Gunicorn (если есть)
+          pkill -f "gunicorn.*8001" || true
+
+          # 2. Запускаем Gunicorn в фоновом режиме с nohup и логированием
+          nohup poetry run gunicorn config.wsgi:application \
+            --bind 0.0.0.0:8001 \
+            --workers 3 \
+            --access-logfile gunicorn_access.log \
+            --error-logfile gunicorn_error.log \
+            --daemon
+
+          # 3. Проверяем, что процесс запустился
+          sleep 5
+          pgrep -f "gunicorn.*8001" || exit 1
           EOF

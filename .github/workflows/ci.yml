@@ -142,8 +142,18 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd ${{ secrets.DEPLOY_DIR }}
+          # Явно указываем параметры подключения
+          export PGHOST=localhost \
+                 PGPORT=5432 \
+                 PGUSER=${{ secrets.POSTGRES_USER }} \
+                 PGPASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+                 PGDATABASE=${{ secrets.POSTGRES_DB }}
+
+          # Проверяем подключение
+          psql -c "SELECT 1;" || exit 1
+
+          # Применяем миграции
           poetry run python manage.py migrate --no-input
-          poetry run python manage.py showmigrations
           EOF
 
       - name: Collect static files

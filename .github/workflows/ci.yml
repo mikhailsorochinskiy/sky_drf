@@ -135,7 +135,7 @@ jobs:
           poetry env use python3.13
 
           # Устанавливаем зависимости (включая psycopg2-binary для разработки)
-          poetry install --no-interaction
+          poetry install --no-root --no-interaction
           EOF
 
       - name: Apply migrations

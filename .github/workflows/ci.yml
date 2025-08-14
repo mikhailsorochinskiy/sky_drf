@@ -71,31 +71,50 @@ jobs:
         run: |
           rsync -avz --exclude '__pycache__' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
 
+      - name: Install system dependencies
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          # Обновляем пакеты и устанавливаем системные зависимости
+          sudo apt-get update -y
+          sudo apt-get install -y \
+              software-properties-common \
+              python3.13 \
+              python3.13-dev \
+              python3.13-venv \
+              libpq-dev \
+              postgresql-client \
+              build-essential \
+              libssl-dev \
+              libffi-dev
+
+          # Убедимся, что pg_config доступен
+          sudo ln -sf /usr/lib/postgresql/16/bin/pg_config /usr/bin/pg_config || true
+          EOF
+
       - name: Install and configure Poetry
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          # Устанавливаем Python 3.13
-          sudo apt-get update -y
-          sudo apt-get install -y software-properties-common
-          sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo apt-get install -y python3.13 python3.13-venv
-
-          # Устанавливаем Poetry с явным указанием PATH
+          # Устанавливаем Poetry
           curl -sSL https://install.python-poetry.org | python3.13 -
           export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"
           echo 'export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"' >> ~/.bashrc
-
-          # Проверяем установку
           /home/${{ secrets.SSH_USER }}/.local/bin/poetry --version
           EOF
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd ${{ secrets.DEPLOY_DIR }}
-          # Используем абсолютный путь к Poetry на всякий случай
+          # Используем временно psycopg2-binary для успешной установки
+          /home/${{ secrets.SSH_USER }}/.local/bin/poetry add psycopg2-binary --group dev
+
+          # Основная установка зависимостей
           /home/${{ secrets.SSH_USER }}/.local/bin/poetry env use python3.13
           /home/${{ secrets.SSH_USER }}/.local/bin/poetry install --no-root --no-interaction
+
+          # Для production: заменить psycopg2-binary на обычный psycopg2
+          # /home/${{ secrets.SSH_USER }}/.local/bin/poetry remove psycopg2-binary
+          # /home/${{ secrets.SSH_USER }}/.local/bin/poetry add psycopg2
           EOF
 
       - name: Setup and configure PostgreSQL

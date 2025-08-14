@@ -71,22 +71,32 @@ jobs:
         run: |
           rsync -avz --exclude '__pycache__' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
 
-      - name: Install Python 3.13
+      - name: Install and configure Poetry
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "
-            sudo apt-get update && \
-            sudo apt-get install -y software-properties-common && \
-            sudo add-apt-repository -y ppa:deadsnakes/ppa && \
-            sudo apt-get install -y python3.13 python3.13-venv
-          "
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          # Устанавливаем Python 3.13
+          sudo apt-get update -y
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo apt-get install -y python3.13 python3.13-venv
+
+          # Устанавливаем Poetry с явным указанием PATH
+          curl -sSL https://install.python-poetry.org | python3.13 -
+          export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"
+          echo 'export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"' >> ~/.bashrc
+
+          # Проверяем установку
+          /home/${{ secrets.SSH_USER }}/.local/bin/poetry --version
+          EOF
 
       - name: Install dependencies
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "
-            cd ${{ secrets.DEPLOY_DIR }} && \
-            poetry env use python3.13 && \
-            poetry install --no-root --no-interaction
-          "
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd ${{ secrets.DEPLOY_DIR }}
+          # Используем абсолютный путь к Poetry на всякий случай
+          /home/${{ secrets.SSH_USER }}/.local/bin/poetry env use python3.13
+          /home/${{ secrets.SSH_USER }}/.local/bin/poetry install --no-root --no-interaction
+          EOF
 
       - name: Setup and configure PostgreSQL
         run: |

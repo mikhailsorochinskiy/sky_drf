@@ -67,28 +67,54 @@ jobs:
         run: |
           ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
+      - name: Verify server access
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "id -u"
+
       - name: Copy project files to server
         run: |
-          rsync -avz --exclude '__pycache__' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
+          rsync -avz --exclude '__pycache__' --exclude '.env' --exclude '.venv' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
 
       - name: Install system dependencies
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          # Обновляем пакеты и устанавливаем системные зависимости
+          # Добавляем репозитории для Python 3.13 и PostgreSQL 16
           sudo apt-get update -y
+          sudo apt-get install -y software-properties-common wget
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+
+          # Устанавливаем основные зависимости
+          sudo apt-get update
           sudo apt-get install -y \
-              software-properties-common \
               python3.13 \
               python3.13-dev \
               python3.13-venv \
+              postgresql-16 \
+              postgresql-client-16 \
               libpq-dev \
-              postgresql-client \
               build-essential \
               libssl-dev \
               libffi-dev
 
-          # Убедимся, что pg_config доступен
+          # Настраиваем ссылку на pg_config
           sudo ln -sf /usr/lib/postgresql/16/bin/pg_config /usr/bin/pg_config || true
+          EOF
+
+      - name: Configure PostgreSQL
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          # Настраиваем пользователя и базу данных
+          sudo -u postgres psql -c "CREATE USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';" || true
+          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.POSTGRES_DB }} OWNER ${{ secrets.POSTGRES_USER }};" || true
+          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.POSTGRES_DB }} TO ${{ secrets.POSTGRES_USER }};"
+
+          # Настраиваем аутентификацию
+          echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
+
+          # Перезапускаем PostgreSQL
+          sudo systemctl restart postgresql@16-main
           EOF
 
       - name: Install and configure Poetry
@@ -96,63 +122,41 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           # Устанавливаем Poetry
           curl -sSL https://install.python-poetry.org | python3.13 -
-          export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"
           echo 'export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"' >> ~/.bashrc
-          /home/${{ secrets.SSH_USER }}/.local/bin/poetry --version
+          source ~/.bashrc
+          poetry --version
           EOF
 
       - name: Install Python dependencies
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd ${{ secrets.DEPLOY_DIR }}
-          # Используем временно psycopg2-binary для успешной установки
-          /home/${{ secrets.SSH_USER }}/.local/bin/poetry add psycopg2-binary --group dev
+          # Создаем виртуальное окружение с Python 3.13
+          poetry env use python3.13
 
-          # Основная установка зависимостей
-          /home/${{ secrets.SSH_USER }}/.local/bin/poetry env use python3.13
-          /home/${{ secrets.SSH_USER }}/.local/bin/poetry install --no-root --no-interaction
-
-          # Для production: заменить psycopg2-binary на обычный psycopg2
-          # /home/${{ secrets.SSH_USER }}/.local/bin/poetry remove psycopg2-binary
-          # /home/${{ secrets.SSH_USER }}/.local/bin/poetry add psycopg2
+          # Устанавливаем зависимости (включая psycopg2-binary для разработки)
+          poetry install --no-interaction
           EOF
-
-      - name: Setup and configure PostgreSQL
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          sudo systemctl start postgresql@16-main
-          sudo systemctl status postgresql@16-main
-          sudo -u postgres psql -c "ALTER USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';" || \
-          sudo -u postgres psql -c "CREATE USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';"
-          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.POSTGRES_DB }} OWNER ${{ secrets.POSTGRES_USER }};" || true
-          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.POSTGRES_DB }} TO ${{ secrets.POSTGRES_USER }};"
-          echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-          sudo systemctl restart postgresql@16-main
-          sudo -u postgres psql -c "\du"
-          sudo -u postgres psql -c "\l"
-          EOF
-      - name: Check PostgreSQL status
-        run: |
-            ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo systemctl status postgresql@16-main"
 
       - name: Apply migrations
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd ${{ secrets.DEPLOY_DIR }}
-          PGPASSWORD='${{ secrets.POSTGRES_PASSWORD }}' psql -h localhost -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -c "SELECT 1;" || exit 1
           poetry run python manage.py migrate --no-input
           poetry run python manage.py showmigrations
           EOF
-      - name: Collect static files on server
+
+      - name: Collect static files
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-            cd ${{ secrets.DEPLOY_DIR }}
-            mkdir -p static
-            poetry run python manage.py collectstatic --noinput
+          cd ${{ secrets.DEPLOY_DIR }}
+          mkdir -p static
+          poetry run python manage.py collectstatic --noinput
           EOF
 
       - name: Restart application
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-            sudo systemctl restart myapp.service
-          EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "
+          sudo systemctl restart myapp.service
+          sudo systemctl status myapp.service
+          "

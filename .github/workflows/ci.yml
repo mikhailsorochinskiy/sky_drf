@@ -32,8 +32,6 @@ jobs:
         run: pip install poetry
       - name: Install dependencies
         run: poetry install --no-root
-      - name: Wait for PostgreSQL
-        run: sleep 20
       - name: Run migrations
         env:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
@@ -54,3 +52,65 @@ jobs:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
           POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
         run: poetry run python manage.py test
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.8.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Copy project files to server
+        run: |
+          rsync -avz --exclude '__pycache__' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
+
+      - name: Install dependencies on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd ${{ secrets.DEPLOY_DIR }}
+          curl -sSL https://install.python-poetry.org | python3 -
+          poetry install --no-root
+          EOF
+
+      - name: Setup and configure PostgreSQL
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          sudo systemctl start postgresql@16-main
+          sudo systemctl status postgresql@16-main
+          sudo -u postgres psql -c "ALTER USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';" || \
+          sudo -u postgres psql -c "CREATE USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';"
+          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.POSTGRES_DB }} OWNER ${{ secrets.POSTGRES_USER }};" || true
+          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.POSTGRES_DB }} TO ${{ secrets.POSTGRES_USER }};"
+          echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
+          sudo systemctl restart postgresql@16-main
+          sudo -u postgres psql -c "\du"
+          sudo -u postgres psql -c "\l"
+          EOF
+      - name: Check PostgreSQL status
+        run: |
+            ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo systemctl status postgresql@16-main"
+
+      - name: Apply migrations
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd ${{ secrets.DEPLOY_DIR }}
+          PGPASSWORD='${{ secrets.POSTGRES_PASSWORD }}' psql -h localhost -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -c "SELECT 1;" || exit 1
+          poetry run python manage.py migrate --no-input
+          poetry run python manage.py showmigrations
+          EOF
+      - name: Collect static files on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            cd ${{ secrets.DEPLOY_DIR }}
+            mkdir -p static
+            poetry run python manage.py collectstatic --noinput
+          EOF
+
+      - name: Restart application
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            sudo systemctl restart myapp.service
+          EOF

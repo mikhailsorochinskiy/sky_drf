@@ -139,10 +139,11 @@ jobs:
           sleep 5
           pgrep -f "gunicorn.*8001" || exit 1
           EOF
-          - name: Verify application
-            run: |
-              ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-              curl -s http://localhost:8001/health-check/ || \
-              curl -s http://localhost:8001 || \
-              echo "Application failed to start"
-              EOF
+
+      - name: Verify application
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          curl -s http://localhost:8001/health-check/ || \
+          curl -s http://localhost:8001 || \
+          echo "Application failed to start"
+          EOF

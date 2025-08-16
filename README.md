@@ -14,18 +14,38 @@ A RESTful API service for Learning Management System (LMS) built with DRF and Po
 
 ## Installation
 
-1. Clone the repository:
+1. Set up dependencies:
+```commandline
+sudo apt update
+sudo apt upgrade
+```
+2. Set up Docker:
+Чтобы установить Docker, воспользуйтесь инструкцией по установке с официального сайта: https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
+3. Firewall:
+```commandline
+sudo ufw status
+sudo ufw enable
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 22/tcp
+```
+4. Clone the repository:
 ```commandline
 git clone https://github.com/mikhailsorochinskiy/sky_drf.git
+cd sky_drf/
 ```
-2. Set your environment variables:
+5. Set your environment variables:
 Fill in '.env.sample' file. Don't forget to rename the file to .env!
-3. Start the container:
+
+6. Start the container:
 ```commandline
 docker-compose up
 ```
-4. Congratulations! The project is set up successfully! To enjoy all the features go to http://localhost:8000/users/users/
+7. Congratulations! The project is set up successfully! To enjoy all the features go to http://localhost:8000/users/users/
 and create a user account.
+
+## Workflows
+when committing commits and sending them to a remote repository, you need to set the host to localhost in .env
 
 ## API Documentation
 

@@ -45,7 +45,8 @@ docker-compose up
 and create a user account.
 
 ## Workflows
-when committing commits and sending them to a remote repository, you need to set the host to localhost in .env
+when committing commits and sending them to a remote repository, 
+you need to set the host to localhost in .env
 
 ## API Documentation
 

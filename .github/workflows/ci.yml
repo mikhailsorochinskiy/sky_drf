@@ -1,0 +1,149 @@
+name: Django CI
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:latest
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install --no-root
+      - name: Run migrations
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+        run: |
+            poetry run python manage.py migrate
+
+      - name: Run tests
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+        run: poetry run python manage.py test
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.5.4
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+      - name: Add server to known_hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+      - name: Copy project files to server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            cd ${{ secrets.DEPLOY_DIR }}
+            git fetch --prune
+            git reset --hard origin/feature/homework_35_2
+          EOF
+      - name: Install dependencies on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            cd ${{ secrets.DEPLOY_DIR }}
+            curl -sSL https://install.python-poetry.org | python3 -
+            poetry install --no-root
+          EOF
+      - name: Setup and configure PostgreSQL
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          sudo systemctl start postgresql@16-main
+          sudo systemctl status postgresql@16-main
+          sudo -u postgres psql -c "ALTER USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';" || \
+          sudo -u postgres psql -c "CREATE USER ${{ secrets.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';"
+          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.POSTGRES_DB }} OWNER ${{ secrets.POSTGRES_USER }};" || true
+          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.POSTGRES_DB }} TO ${{ secrets.POSTGRES_USER }};"
+          echo "host all all 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
+          sudo systemctl restart postgresql@16-main
+          sudo -u postgres psql -c "\du"
+          sudo -u postgres psql -c "\l"
+          EOF
+      - name: Check PostgreSQL status
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo systemctl status postgresql@16-main"
+
+      - name: Apply migrations
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd ${{ secrets.DEPLOY_DIR }}
+          PGPASSWORD='${{ secrets.POSTGRES_PASSWORD }}' psql -h localhost -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -c "SELECT 1;" || exit 1
+          poetry run python manage.py migrate --no-input
+          poetry run python manage.py showmigrations
+          EOF
+      - name: Collect static files on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd ${{ secrets.DEPLOY_DIR }}
+
+          # 1. Устанавливаем правильные права на папку проекта
+          sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} .
+          sudo chmod -R 755 static
+
+          # 2. Собираем статику
+          export PATH="/home/${{ secrets.SSH_USER }}/.local/bin:$PATH"
+          poetry run python manage.py collectstatic --noinput --clear
+          EOF
+      - name: Restart application
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd ${{ secrets.DEPLOY_DIR }}
+
+          # 1. Останавливаем предыдущий процесс Gunicorn (если есть)
+          pkill -f "gunicorn.*8001" || true
+
+          # 2. Запускаем Gunicorn в фоновом режиме с nohup и логированием
+          nohup poetry run gunicorn config.wsgi:application \
+            --bind 0.0.0.0:8001 \
+            --workers 3 \
+            --access-logfile gunicorn_access.log \
+            --error-logfile gunicorn_error.log \
+            --daemon
+
+          # 3. Проверяем, что процесс запустился
+          sleep 5
+          pgrep -f "gunicorn.*8001" || exit 1
+          EOF
+
+      - name: Verify application
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          curl -s http://localhost:8001/health-check/ || \
+          curl -s http://localhost:8001 || \
+          echo "Application failed to start"
+          EOF

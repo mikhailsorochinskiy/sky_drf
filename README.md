@@ -1,35 +1,77 @@
-# LMS API Service
+# Сервис API для LMS
 
-A RESTful API service for Learning Management System (LMS) built with DRF and PostgreSQL.
+RESTful API для системы дистанционного обучения на Django REST Framework и PostgreSQL.
 
-## Features
+## Основные функции
 
-- User authentication (JWT)
-- Course management
-- Lesson management
-- User management (automatic blocking of inactive users)
-- Payment service
-- Courses subscription feature (be aware of all updates of a course you're interested at)
-- API documentation with Swagger
+- Аутентификация по JWT
+- Управление курсами и уроками
+- Управление пользователями (автоблокировка неактивных)
+- Интеграция платежей
+- Подписки на обновления курсов
+- Документация через Swagger/Redoc
 
-## Installation
+## Установка
 
-1. Clone the repository:
+1. Обновите систему:
+```bash
+sudo apt update && sudo apt upgrade -y
+2. Установите Docker:
+Чтобы установить Docker, воспользуйтесь инструкцией по установке с официального сайта: https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
+3. Настройте фаервол::
+```commandline
+sudo ufw status
+sudo ufw enable
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 22/tcp
+```
+4. Клонируйте репозиторий:
 ```commandline
 git clone https://github.com/mikhailsorochinskiy/sky_drf.git
+cd sky_drf/
 ```
-2. Set your environment variables:
-Fill in '.env.sample' file. Don't forget to rename the file to .env!
-3. Start the container:
+5. Настройте окружение:
+```commandline
+cp .env.sample .env
+nano .env
+```
+6. Запустите сервис:
 ```commandline
 docker-compose up
 ```
-4. Congratulations! The project is set up successfully! To enjoy all the features go to http://localhost:8000/users/users/
-and create a user account.
+7. Поздравляем! Проект успешно настроен!
+Для начала работы перейдите по адресу вашего сервера(IP)
+
+## Workflows
+### Запуск Workflow
+При коммитах и отправке изменений в удаленный репозиторий, будет автоматически запускаться CI/CD workflow. 
+Убедитесь, что ваш файл .env содержит следующее значение для HOST: HOST=localhost
+
+Примечание: Если вы развертываете на удалённом сервере, измените значение на имя вашего сервиса или IP-адрес.
+
+### Деплой приложения
+Для развертывания приложения на удалённом сервере выполните следующие шаги:
+
+1. Подключитесь к вашем серверу через SSH:
+```
+ssh user@your-server-ip
+```
+
+2. Перейдите в директорию проекта:
+```
+cd /path/to/your/project
+```
+
+3. Запустите развертывание с помощью команд:
+```
+docker-compose down
+docker-compose up -d --build
+```
 
 ## API Documentation
 
-After starting the container, access the API documentation at:
+После запуска контейнера документация будет доступна по адресам:
 
 Swagger UI: http://localhost:8000/swagger/
 Redoc UI: http://localhost:8000/redoc/
